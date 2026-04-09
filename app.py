@@ -34,7 +34,8 @@ if uploaded_file:
     # Käytetään 'avc1' (H.264) tai 'mp4v'. Jos kumpikaan ei toimi pilvessä, 
     # se on merkki siitä että ffmpeg-kirjastot puuttuvat.
     output_path = "analysoitu_kyykky.mp4"
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v') 
+# 'avc1' on H.264-koodekin tunnus, jota selaimet rakastavat
+fourcc = cv2.VideoWriter_fourcc(*'avc1')
     out = None
 
     progress_bar = st.progress(0)
