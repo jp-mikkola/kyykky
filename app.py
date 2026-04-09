@@ -12,7 +12,7 @@ st.title("🏋️ Live AI Kyykkyvalmentaja")
 st.write("Aseta puhelin sivulle ja paina 'Start'.")
 
 # --- MEDIAPIPE SETUP ---
-MODEL_PATH = 'pose_landmarker_heavy.task'
+MODEL_PATH = 'pose_landmarker_lite.task'
 
 # --- APUFUNKTIOT ---
 def calculate_angle(a, b, c):
