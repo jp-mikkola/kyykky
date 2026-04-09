@@ -7,7 +7,7 @@ import math
 
 # --- 1. SIVUN ASETUKSET ---
 st.set_page_config(page_title="AI Kyykkyvalmentaja", layout="wide")
-st.title("🏋️ AI Kyykkyvalmentaja (Moderni Tasks-versio)")
+st.title("🏋️ AI Kyykkyvalmentaja")
 
 # --- 2. APUFUNKTIOT ---
 def calculate_angle(a, b, c):
@@ -43,8 +43,6 @@ if st.sidebar.button('Nollaa toistot'):
     st.session_state.rep_history = []
     st.rerun()
 
-st.sidebar.divider()
-st.sidebar.info("Tämä versio käyttää modernia MediaPipe Tasks -moottoria.")
 
 # --- 5. NÄKYMÄN ALUSTUS ---
 col1, col2 = st.columns([2, 1])
