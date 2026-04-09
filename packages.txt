@@ -1,3 +1,4 @@
 libgl1
 libgles2
-libglib2.0-dev
+libegl1
+libglib2.0-0
