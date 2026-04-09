@@ -31,14 +31,18 @@ class VideoProcessor(VideoTransformerBase):
     def __init__(self):
         # Alustetaan MediaPipe Tasks
         base_options = mp.tasks.BaseOptions(model_asset_path=MODEL_PATH)
-options = mp.tasks.vision.PoseLandmarkerOptions(
-    base_options=base_options,
-    running_mode=mp.tasks.vision.RunningMode.VIDEO,
-    num_poses=1, # Pakotetaan etsimään vain yksi ihminen
-    min_pose_detection_confidence=0.3, # Lasketaan kynnystä hieman nopeuden parantamiseksi
-    min_pose_presence_confidence=0.3,
-    min_tracking_confidence=0.3
-)
+        
+        # Huomio: Kaikkien alla olevien rivien pitää olla samalla tasolla (sennys)
+        options = mp.tasks.vision.PoseLandmarkerOptions(
+            base_options=base_options,
+            running_mode=mp.tasks.vision.RunningMode.VIDEO,
+            num_poses=1,
+            min_pose_detection_confidence=0.3,
+            min_pose_presence_confidence=0.3,
+            min_tracking_confidence=0.3
+        )
+        
+        # TÄMÄ RIVI aiheutti virheen, jos se oli eri kohdassa kuin 'options' yläpuolella
         self.landmarker = mp.tasks.vision.PoseLandmarker.create_from_options(options)
         
         # Treenimuuttujat
