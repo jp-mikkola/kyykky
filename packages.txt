@@ -1,3 +1,5 @@
 libgl1
 libgles2
 libegl1
+ffmpeg
+libx264-dev
