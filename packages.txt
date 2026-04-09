@@ -1,1 +1,3 @@
-libgl1
+libgl1libgl1
+libgles2
+libglib2.0-0
