@@ -3,16 +3,13 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import tempfile
-import av
 import os
 
-# --- ASETUKSET ---
-st.set_page_config(page_title="AI Kyykkyanalyysi", layout="wide")
-st.title("🏋️ AI Kyykkyanalyysi - Vakaa versio")
+st.set_page_config(page_title="Kyykkyanalyysi", layout="wide")
+st.title("🏋️ Kyykkyanalyysi")
 
 MODEL_PATH = 'pose_landmarker_lite.task'
-TARGET_FPS = 15
-TARGET_WIDTH = 640
+TARGET_FPS = 10 # Vieläkin hieman hitaampi, jotta on varmempaa
 
 def calculate_angle(a, b, c):
     a = np.array(a); b = np.array(b); c = np.array(c)
@@ -21,131 +18,80 @@ def calculate_angle(a, b, c):
     if angle > 180.0: angle = 360 - angle
     return angle
 
-uploaded_file = st.file_uploader("Lataa kyykkyvideo analysoitavaksi", type=['mp4', 'mov', 'avi'])
+uploaded_file = st.file_uploader("Lataa video", type=['mp4', 'mov'])
 
-if uploaded_file is not None:
-    # 1. VALMISTELUT
+if uploaded_file:
     tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
     tfile.write(uploaded_file.read())
-    tfile.close() # Suljetaan, jotta OpenCV voi lukea sen
-    
-    output_path = "output_analyzed.mp4"
-    if os.path.exists(output_path):
-        os.remove(output_path)
     
     cap = cv2.VideoCapture(tfile.name)
-    original_fps = cap.get(cv2.CAP_PROP_FPS)
-    if original_fps <= 0: original_fps = 30
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    skip_frames = max(1, int(original_fps / TARGET_FPS))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    skip_frames = max(1, int(fps / TARGET_FPS))
     
-    st.info("Analysoidaan videota... Tämä vaihe kestää hetken.")
     progress_bar = st.progress(0)
+    status_text = st.empty()
     
-    # Haetaan ekasta framesta mitat parillisina
-    ret_first, first_frame = cap.read()
-    if not ret_first:
-        st.error("Videota ei voitu lukea.")
-        st.stop()
-        
-    h_orig, w_orig, _ = first_frame.shape
-    new_w = TARGET_WIDTH - (TARGET_WIDTH % 2) # Pakota parilliseksi
-    new_h = int(new_w * (h_orig / w_orig))
-    new_h = new_h - (new_h % 2) # Pakota parilliseksi
+    # Analyysimuuttujat
+    counter = 0
+    stage = "ylhaalla"
+    rep_images = [] # Tänne tallennetaan kuvat onnistuneista kyykyistä
 
-    # Alustetaan PyAV
-    container = av.open(output_path, mode="w")
-    stream = container.add_stream("libx264", rate=TARGET_FPS)
-    stream.width = new_w
-    stream.height = new_h
-    stream.pix_fmt = "yuv420p"
-    # Lisätään optioita vakauden parantamiseksi
-    stream.options = {"preset": "veryfast", "crf": "23"}
-    
-    # MediaPipe alustus
     base_options = mp.tasks.BaseOptions(model_asset_path=MODEL_PATH)
     options = mp.tasks.vision.PoseLandmarkerOptions(
         base_options=base_options,
         running_mode=mp.tasks.vision.RunningMode.VIDEO
     )
 
-    counter = 0
-    stage = "ylhaalla"
-    rep_history = []
-    processed_count = 0
-
     with mp.tasks.vision.PoseLandmarker.create_from_options(options) as landmarker:
-        # Palautetaan lukupää alkuun
-        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-        
+        curr_frame = 0
         while cap.isOpened():
-            target_frame_index = processed_count * skip_frames
-            if target_frame_index >= total_frames:
-                break
-                
-            cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame_index)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, curr_frame * skip_frames)
             ret, frame = cap.read()
             if not ret: break
             
-            frame = cv2.resize(frame, (new_w, new_h))
+            h, w, _ = frame.shape
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-            timestamp_ms = int((target_frame_index / original_fps) * 1000)
+            timestamp_ms = int((cap.get(cv2.CAP_PROP_POS_FRAMES) / fps) * 1000)
             
             results = landmarker.detect_for_video(mp_image, timestamp_ms)
             
             if results.pose_landmarks:
                 for landmarks in results.pose_landmarks:
-                    # Pisteet
-                    s = landmarks[11]; h_pt = landmarks[23]; k = landmarks[25]; a = landmarks[27]
-                    shld = [s.x * new_w, s.y * new_h]; hip = [h_pt.x * new_w, h_pt.y * new_h]
-                    knee = [k.x * new_w, k.y * new_h]; ankl = [a.x * new_w, a.y * new_h]
+                    # Lasketaan lonkka, polvi, nilkka (vasen puoli)
+                    h_pt = landmarks[23]; k_pt = landmarks[25]; a_pt = landmarks[27]
+                    hip = [h_pt.x * w, h_pt.y * h]
+                    knee = [k_pt.x * w, k_pt.y * h]
+                    ankl = [a_pt.x * w, a_pt.y * h]
                     
-                    knee_angle = calculate_angle(hip, knee, ankl)
+                    angle = calculate_angle(hip, knee, ankl)
                     
-                    if knee_angle < 140 and stage == "ylhaalla":
-                        stage = "alhaalla"; min_angle = 180
+                    if angle < 140 and stage == "ylhaalla":
+                        stage = "alhaalla"
+                        min_angle = 180
+                    
                     if stage == "alhaalla":
-                        min_angle = min(min_angle, knee_angle)
-                        if knee_angle > 155:
+                        min_angle = min(min_angle, angle)
+                        if angle > 155:
                             stage = "ylhaalla"
                             counter += 1
-                            rep_history.append(int(min_angle))
+                            # Tallennetaan kuva tästä hetkestä (vähän ennen nousua)
+                            # Piirretään kulma kuvaan
+                            cv2.putText(frame, f"Syvyys: {int(min_angle)}deg", (50, 100), 
+                                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                            rep_images.append((counter, int(min_angle), frame.copy()))
 
-                    # Grafiikat
-                    cv2.line(frame, (int(shld[0]), int(shld[1])), (int(hip[0]), int(hip[1])), (0, 255, 0), 3)
-                    cv2.line(frame, (int(hip[0]), int(hip[1])), (int(knee[0]), int(knee[1])), (255, 255, 255), 2)
-                    cv2.line(frame, (int(knee[0]), int(knee[1])), (int(ankl[0]), int(ankl[1])), (0, 255, 0), 3)
-                    cv2.putText(frame, f"REPS: {counter}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-
-            # Tallennetaan frame PyAV:lla
-            # Muutetaan BGR (OpenCV) takaisin RGB:ksi videota varten
-            vid_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            av_frame = av.VideoFrame.from_ndarray(vid_frame, format="rgb24")
-            for packet in stream.encode(av_frame):
-                container.mux(packet)
-
-            processed_count += 1
-            progress_bar.progress(min(1.0, target_frame_index / total_frames))
-
-        # Suljetaan streamit
-        for packet in stream.encode():
-            container.mux(packet)
-        container.close()
+            curr_frame += 1
+            progress_bar.progress(min(1.0, (curr_frame * skip_frames) / total_frames))
+            status_text.text(f"Analysoitu {counter} toistoa...")
 
     cap.release()
-    st.success(f"Analyysi valmis! Toistot: {counter}")
+    st.success(f"Valmis! Löytyi {counter} toistoa.")
 
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        st.subheader("Analysoitu video")
-        with open(output_path, "rb") as v_file:
-            st.video(v_file.read())
-    
-    with col2:
-        st.subheader("Toistojen syvyydet")
-        for i, angle in enumerate(rep_history):
-            st.write(f"Toisto {i+1}: **{angle}°**")
-    
-    # Siivotaan väliaikaistiedostot
-    os.unlink(tfile.name)
+    # Näytetään tulokset kuvina
+    if rep_images:
+        st.subheader("Toistojen kohokohdat")
+        for num, ang, img in rep_images:
+            st.write(f"Toisto {num} - Syvin kohta: {ang}°")
+            st.image(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
